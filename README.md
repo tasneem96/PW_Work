@@ -9,10 +9,17 @@ The point is the comparison: every kernel computes
 different ways, so you can plot energy against error and pick a point on
 that curve.
 
+## Just want one softmax?
+
+Use `arduino/softmax_simple/softmax_simple.ino` — a single self-contained
+file with one softmax function and the marker pin. Open it, upload it,
+done. Everything below is the multi-kernel comparison bench.
+
 ## Layout
 
 | Path | What it is |
 | --- | --- |
+| `arduino/softmax_simple/softmax_simple.ino` | One softmax, one file. Start here. |
 | `arduino/softmax_power_bench/softmax_kernels.{h,cpp}` | The kernels. No Arduino dependencies — plain C++. |
 | `arduino/softmax_power_bench/softmax_power_bench.ino` | Benchmark sketch: marker pin, CSV over serial, serial commands. |
 | `test/test_softmax.cpp` | Host accuracy test against a `double` reference. |
