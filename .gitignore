@@ -1,0 +1,8 @@
+# Host + AVR test binaries
+test/test_softmax
+test/*.elf
+test/*.o
+*.hex
+
+# Arduino IDE build output
+build/
