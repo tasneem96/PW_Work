@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# GloVe vectors are downloaded, not committed (glove.6B.50d.txt is ~171 MB)
+data/glove.*
+*.cache/
