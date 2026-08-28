@@ -219,6 +219,56 @@ ground truth do not line up cell for cell, and an elementwise comparison is
 comparing distances to *different* neighbours (it matches nothing, which reads
 as "unknown convention").
 
+### Tracing one query through the graph
+
+faiss reports only counters for a search (`hnsw_stats.ndis`, `nhops`) — it never
+hands back the nodes it visited. `glove_retrieval/hnsw_trace.py` walks the same
+graph with the same algorithm in Python, so the path is inspectable:
+
+```python
+from glove_retrieval.hnsw_trace import search_with_trace, verify_against_faiss
+
+D, I, trace = search_with_trace(index, query, k=10, ef_search=64)
+print(trace.summary())
+print(trace.greedy_path)          # [entry, hop, hop, ...] down the upper layers
+print(trace.path_at_level(2))     # the walk on one level
+print(trace.expansions[0].node, trace.expansions[0].discovered)
+```
+
+```
+entry point : 12586
+greedy path : 12586 -> 16298 -> 7779   (2 hops down levels 2..1)
+layer 0     : 65 nodes expanded, 1453 visited, 1466 distances computed
+efSearch=64  k=10
+```
+
+```bash
+python scripts/visualize_query_trace_3d.py --query-id 0 -k 10 -o trace.png
+```
+
+Being a re-implementation, it is worth nothing unless it matches:
+
+```python
+verify_against_faiss(index, query, k=10, ef_search=64)
+# {'ids_match': True, 'distances_match': True, 'ndis_match': True, ...}
+```
+
+`ndis_match` is the strict one — two traversals that differ anywhere will not
+agree on the number of distance computations. It holds exactly for both metrics
+across `ef ∈ {16, 64, 256}` and `k ∈ {1, 10, 100}`. Two details were needed to
+get there:
+
+- faiss **does not count the entry point's own distance** in `ndis`. Counting it
+  leaves you off by exactly one on every query.
+- the loop stops when the nearest unexplored candidate is worse than the whole
+  `ef`-sized frontier. Stopping on the *k*-sized result set instead still looks
+  plausible but returns the wrong ids; stopping on "candidates below `d0`" never
+  fires at all, since `d0` is the minimum — that one silently walks the entire
+  graph (`ndis` 19865 vs. faiss's 1451).
+
+Note `index.search` on an L2 index returns **squared** distances; the replay
+matches that rather than taking a root.
+
 ### Offline fixture
 
 `scripts/make_sample_ann_dataset.py` writes a small file with the same keys,
@@ -271,12 +321,16 @@ glove_retrieval/
   index.py         GloveIndex: encode, scores, search, most_similar, analogy
   faiss_backend.py FaissIndex: open/build a FAISS db, labels, metric detection
   ann_benchmark.py HNSW over ann-benchmarks HDF5 (faiss_index, recall_at_k)
+  hnsw_trace.py    replay a search step by step: entry point, hops, expansions
   cli.py           argparse front end for both backends
 scripts/
   download_glove.sh        fetch + extract glove.6B.<dim>.txt
   build_faiss_index.py     GloVe text file -> .faiss + labels sidecar
   bench_hnsw.py            recall/QPS sweep over an ann-benchmarks dataset
   make_sample_ann_dataset.py  small stand-in for glove-25-angular.hdf5
+  visualize_hnsw_node.py      one node's layers, 2D (networkx)
+  visualize_hnsw_node_3d.py   one node's layers, stacked in 3D (pyvista)
+  visualize_query_trace_3d.py one query's path through the graph (pyvista)
   make_sample_vectors.py   regenerate the offline test fixture
 data/
   sample.synthetic.50d.txt 80 synthetic 50-d vectors in 8 topical clusters
@@ -284,12 +338,13 @@ tests/
   test_retrieval.py        NumPy backend
   test_faiss.py            FAISS backend (skipped if faiss is missing)
   test_ann_benchmark.py    HNSW, recall, angular handling
+  test_hnsw_trace.py       traversal replay vs. faiss (ids, distances, ndis)
 ```
 
 ## Tests
 
 ```bash
-python -m pytest tests -q      # 72 tests; faiss/h5py tests skip if missing
+python -m pytest tests -q      # 94 tests; faiss/h5py tests skip if missing
 ```
 
 `test_faiss.py` pins the parts that are easy to get wrong: FAISS `Flat` results
