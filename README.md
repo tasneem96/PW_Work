@@ -14,7 +14,7 @@ Two interchangeable backends behind one interface:
 
 ```bash
 pip install -r requirements.txt      # numpy
-pip install faiss-cpu                # only for the FAISS backend
+pip install faiss-cpu h5py           # FAISS backend / ann-benchmarks datasets
 ./scripts/download_glove.sh          # fetches glove.6B.zip, keeps glove.6B.50d.txt in ./data
 ```
 
@@ -151,6 +151,81 @@ default; ANN pays off when you have millions of vectors or a high query rate.
 An IVF index left at `nprobe=1` prints a one-time note, since that scans ~0.1%
 of the data and silently costs recall.
 
+## ANN-Benchmarks datasets (glove-25-angular)
+
+`glove_retrieval/ann_benchmark.py` handles the HDF5 files from
+[ann-benchmarks](https://github.com/erikbern/ann-benchmarks) — `train`, `test`,
+`neighbors`, `distances` — with an HNSW index.
+
+```python
+from glove_retrieval.ann_benchmark import faiss_index, recall_at_k
+
+D, I = faiss_index(xb, xq, k=100)          # build HNSW + search, returns faiss (D, I)
+print(recall_at_k(I, ground_truth, k=10))
+```
+
+```bash
+python scripts/bench_hnsw.py data/glove-25-angular.hdf5 -k 10
+```
+
+```
+built HNSW M=32 efConstruction=200 in 104s
+
+ efSearch   recall@10         QPS   ms/query
+       16      0.9668      88,039      0.011
+       64      0.9995      40,662      0.025
+      128      1.0000      24,010      0.042
+      256      1.0000      14,232      0.070
+```
+
+(1,183,514 × 25 on 4 cores — glove-25-angular's exact shape, clustered synthetic
+vectors. The graph is built once and `efSearch` swept, since the recall/speed
+trade-off is a query-time knob.)
+
+### Three things that quietly break this benchmark
+
+**`-angular` means cosine.** The ground truth in `glove-25-angular.hdf5` is
+cosine-based, and GloVe row norms vary by an order of magnitude, so an index
+built on raw L2 or raw inner product disagrees with `neighbors` no matter how
+well you tune HNSW. `faiss_index` L2-normalizes both sides and uses
+`METRIC_INNER_PRODUCT` — for unit vectors `||a-b||² = 2-2cos`, so L2 and IP
+rank identically, but IP makes the returned `D` cosine similarity directly. On
+the test fixture: **recall@10 of 0.98 normalized vs. 0.27 not.** That is the
+single biggest failure mode here, and it looks like a broken index rather than a
+metric mistake.
+
+**`faiss.normalize_L2` works in place.** Called on `xb` straight from h5py it
+silently rewrites your database array, so any later exact-search comparison is
+against different data. Every normalization here goes through a copy.
+
+**HNSW's default `efSearch` is 16.** Asking for `k=100` with a candidate list of
+16 cannot return 100 good neighbours. `faiss_index` defaults `ef_search` to
+`max(2k, 64)` and never lets it fall below `k`.
+
+### Distance conventions
+
+Recall is computed from **ids**, so it does not depend on how the file defines
+distance. If you do want to compare `D` against `distances`, the convention has
+varied between dataset versions, so it is measured rather than assumed:
+
+```python
+from glove_retrieval.ann_benchmark import detect_convention_for_results
+detect_convention_for_results(I, D, ground_truth, ground_truth_distances)
+# -> '1 - cosine' | 'euclidean_on_unit' | 'arccos' | 'cosine_similarity' | None
+```
+
+Compare only where the returned id equals the exact id — an ANN result and the
+ground truth do not line up cell for cell, and an elementwise comparison is
+comparing distances to *different* neighbours (it matches nothing, which reads
+as "unknown convention").
+
+### Offline fixture
+
+`scripts/make_sample_ann_dataset.py` writes a small file with the same keys,
+dtypes and cosine ground truth, with deliberately varied row norms so a missing
+normalization fails loudly. The tests build it themselves; `.hdf5` files are
+gitignored.
+
 ## Python API
 
 ```python
@@ -195,22 +270,26 @@ glove_retrieval/
   loader.py        GloVe text parsing (.txt/.gz/.zip, word2vec headers) + .npy cache
   index.py         GloveIndex: encode, scores, search, most_similar, analogy
   faiss_backend.py FaissIndex: open/build a FAISS db, labels, metric detection
+  ann_benchmark.py HNSW over ann-benchmarks HDF5 (faiss_index, recall_at_k)
   cli.py           argparse front end for both backends
 scripts/
   download_glove.sh        fetch + extract glove.6B.<dim>.txt
   build_faiss_index.py     GloVe text file -> .faiss + labels sidecar
+  bench_hnsw.py            recall/QPS sweep over an ann-benchmarks dataset
+  make_sample_ann_dataset.py  small stand-in for glove-25-angular.hdf5
   make_sample_vectors.py   regenerate the offline test fixture
 data/
   sample.synthetic.50d.txt 80 synthetic 50-d vectors in 8 topical clusters
 tests/
   test_retrieval.py        NumPy backend
   test_faiss.py            FAISS backend (skipped if faiss is missing)
+  test_ann_benchmark.py    HNSW, recall, angular handling
 ```
 
 ## Tests
 
 ```bash
-python -m pytest tests -q      # 52 tests; test_faiss.py skips without faiss
+python -m pytest tests -q      # 72 tests; faiss/h5py tests skip if missing
 ```
 
 `test_faiss.py` pins the parts that are easy to get wrong: FAISS `Flat` results

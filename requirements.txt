@@ -1,4 +1,5 @@
 numpy>=1.21
 
-# Optional: only needed for the FAISS backend (--faiss).
-# faiss-cpu>=1.7
+# Optional extras
+# faiss-cpu>=1.7   # the FAISS backend (--faiss) and the HNSW benchmark
+# h5py>=3.0        # reading ann-benchmarks .hdf5 datasets

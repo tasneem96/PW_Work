@@ -8,3 +8,6 @@ data/glove.*
 
 *.faiss
 *.faiss.labels.*
+
+# ANN-Benchmarks datasets are downloaded / regenerable
+data/*.hdf5
