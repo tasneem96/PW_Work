@@ -56,7 +56,6 @@ class GloveIndex:
         self.vectors = vectors
         self._word_to_index: Dict[str, int] = {w: i for i, w in enumerate(self.vocab)}
         self._unit: np.ndarray | None = None
-        self._sq_norms: np.ndarray | None = None
 
     # ------------------------------------------------------------------
     # construction
@@ -173,11 +172,21 @@ class GloveIndex:
             self._unit = matrix / norms
         return self._unit
 
-    def _squared_norms(self) -> np.ndarray:
-        if self._sq_norms is None:
-            matrix = np.asarray(self.vectors, dtype=np.float32)
-            self._sq_norms = np.einsum("ij,ij->i", matrix, matrix)
-        return self._sq_norms
+    def _distances(self, vector: np.ndarray, chunk: int = 100_000) -> np.ndarray:
+        """Exact L2 distances to every row.
+
+        Computed as ``||v - q||`` chunk by chunk rather than by expanding
+        ``||v||^2 - 2v.q + ||q||^2``: that expansion loses most of its
+        significant digits to cancellation when a row is close to the query,
+        which is exactly the regime top-k cares about.  On GloVe-scale norms it
+        reports ~4e-3 instead of 0 for an exact match.
+        """
+        out = np.empty(self.vectors.shape[0], dtype=np.float32)
+        for start in range(0, self.vectors.shape[0], chunk):
+            stop = min(start + chunk, self.vectors.shape[0])
+            block = np.asarray(self.vectors[start:stop], dtype=np.float32) - vector
+            out[start:stop] = np.sqrt(np.einsum("ij,ij->i", block, block))
+        return out
 
     def scores(
         self, query: str | Sequence[float] | np.ndarray, metric: Metric = "cosine"
@@ -193,9 +202,7 @@ class GloveIndex:
             return np.asarray(self.vectors, dtype=np.float32) @ vector
         if metric == "euclidean":
             # Negated distance, so that "higher is better" holds for every metric.
-            dots = np.asarray(self.vectors, dtype=np.float32) @ vector
-            sq = self._squared_norms() - 2.0 * dots + float(vector @ vector)
-            return -np.sqrt(np.maximum(sq, 0.0))
+            return -self._distances(vector)
         raise ValueError(f"unknown metric {metric!r}; expected one of {METRICS}")
 
     def search(

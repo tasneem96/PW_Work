@@ -1,1 +1,4 @@
 numpy>=1.21
+
+# Optional: only needed for the FAISS backend (--faiss).
+# faiss-cpu>=1.7

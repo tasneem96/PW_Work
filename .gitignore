@@ -5,3 +5,6 @@ __pycache__/
 # GloVe vectors are downloaded, not committed (glove.6B.50d.txt is ~171 MB)
 data/glove.*
 *.cache/
+
+*.faiss
+*.faiss.labels.*
