@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import struct
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -247,63 +247,125 @@ def parity_report(
     ef_grid: Sequence[int],
     k: int = 10,
     recall_tolerance: float = 0.05,
+    build_seeds: int = 3,
     reference_graph: HnswGraph | None = None,
 ) -> dict[str, Any]:
-    """Compare reference-implementation recall with hnswlib's, per efSearch."""
+    """Compare reference-implementation recall with hnswlib's, per efSearch.
+
+    Parity is judged on the gap between seed-averaged recalls, and the per-seed
+    spread is reported next to it. A single build per implementation is not
+    enough to judge parity: on the isotropic 128-d corpus at M = 8, four build
+    seeds moved reference recall@10 at efSearch 10 across 0.577 to 0.709 and
+    hnswlib's across 0.577 to 0.667, so a one-seed comparison can show a 0.05
+    "divergence" that is only which graph each side happened to build. Level
+    assignment and insertion-time ordering differ between the two
+    implementations by construction, so their graphs are never the same
+    instance and only their distributions are comparable.
+    """
     if native_version() is None:
         return {"available": False, "reason": "hnswlib not installed"}
 
     exact = exact_topk(queries, store, k, params.convention)
     truth = [set(int(i) for i in row) for row in exact.ids]
+    seeds = [int(params.seed) + offset for offset in range(max(1, int(build_seeds)))]
 
-    graph = reference_graph or build_index(store, params)
-    native = build_native(store, params)
+    per_seed: list[dict[str, Any]] = []
+    reference_recall: dict[int, list[float]] = {int(ef): [] for ef in ef_grid}
+    native_recall: dict[int, list[float]] = {int(ef): [] for ef in ef_grid}
+    overlap: dict[int, list[float]] = {int(ef): [] for ef in ef_grid}
     native_stats = None
     parse_error = None
-    try:
-        native_stats = native_graph_of(native, store.dim).stats()
-    except Exception as exc:  # pragma: no cover - format drift is possible
-        parse_error = f"{type(exc).__name__}: {exc}"
 
-    cells = []
-    worst_gap = 0.0
-    for ef in ef_grid:
-        ref_ids, _, _ = search_many(graph, store, queries, k=k, ef_search=int(ef))
-        nat_ids, _ = native_search(
-            native, store, queries, k=k, ef_search=int(ef), convention=params.convention
+    for index, seed in enumerate(seeds):
+        seed_params = replace(params, seed=seed)
+        graph = (
+            reference_graph
+            if index == 0 and reference_graph is not None
+            else build_index(store, seed_params)
         )
-        ref_recall = recall_at_k(truth, ref_ids, k)
-        nat_recall = recall_at_k(truth, nat_ids, k)
-        overlap = float(
-            np.mean([
-                len(set(ref_ids[i].tolist()) & set(nat_ids[i].tolist())) / float(k)
-                for i in range(ref_ids.shape[0])
-            ])
-        )
-        gap = abs(ref_recall - nat_recall)
-        worst_gap = max(worst_gap, gap)
-        cells.append(
+        native = build_native(store, seed_params)
+        if index == 0:
+            try:
+                native_stats = native_graph_of(native, store.dim).stats()
+            except Exception as exc:  # pragma: no cover - format drift is possible
+                parse_error = f"{type(exc).__name__}: {exc}"
+
+        cells = []
+        for ef in ef_grid:
+            ref_ids, _, _ = search_many(graph, store, queries, k=k, ef_search=int(ef))
+            nat_ids, _ = native_search(
+                native, store, queries, k=k, ef_search=int(ef), convention=params.convention
+            )
+            ref = recall_at_k(truth, ref_ids, k)
+            nat = recall_at_k(truth, nat_ids, k)
+            shared = float(
+                np.mean([
+                    len(set(ref_ids[i].tolist()) & set(nat_ids[i].tolist())) / float(k)
+                    for i in range(ref_ids.shape[0])
+                ])
+            )
+            reference_recall[int(ef)].append(ref)
+            native_recall[int(ef)].append(nat)
+            overlap[int(ef)].append(shared)
+            cells.append(
+                {
+                    "ef_search": int(ef),
+                    "reference_recall": ref,
+                    "native_recall": nat,
+                    "recall_gap": abs(ref - nat),
+                    "mean_result_overlap": shared,
+                }
+            )
+        per_seed.append(
             {
-                "ef_search": int(ef),
-                "reference_recall": ref_recall,
-                "native_recall": nat_recall,
-                "recall_gap": gap,
-                "mean_result_overlap": overlap,
-                "within_tolerance": bool(gap <= recall_tolerance),
+                "seed": seed,
+                "reference_layer0_mean_degree": graph.stats()["per_layer"][0]["mean_degree"],
+                "cells": cells,
             }
         )
 
+    aggregated = []
+    worst_gap = 0.0
+    for ef in ef_grid:
+        ref_values = np.asarray(reference_recall[int(ef)], dtype=np.float64)
+        nat_values = np.asarray(native_recall[int(ef)], dtype=np.float64)
+        gap = float(abs(ref_values.mean() - nat_values.mean()))
+        worst_gap = max(worst_gap, gap)
+        aggregated.append(
+            {
+                "ef_search": int(ef),
+                "reference_recall_mean": float(ref_values.mean()),
+                "reference_recall_range": [float(ref_values.min()), float(ref_values.max())],
+                "native_recall_mean": float(nat_values.mean()),
+                "native_recall_range": [float(nat_values.min()), float(nat_values.max())],
+                "mean_recall_gap": gap,
+                "seed_spread_reference": float(ref_values.max() - ref_values.min()),
+                "seed_spread_native": float(nat_values.max() - nat_values.min()),
+                "mean_result_overlap": float(np.mean(overlap[int(ef)])),
+                "within_tolerance": bool(gap <= recall_tolerance),
+                "gap_below_seed_spread": bool(
+                    gap <= max(float(ref_values.max() - ref_values.min()),
+                               float(nat_values.max() - nat_values.min()))
+                ),
+            }
+        )
+
+    reference_stats = (
+        reference_graph.stats() if reference_graph is not None else build_index(store, params).stats()
+    )
     return {
         "available": True,
         "hnswlib_version": native_version(),
         "params": params.as_dict(),
         "k": int(k),
         "n_queries": int(np.atleast_2d(queries).shape[0]),
+        "build_seeds": seeds,
         "recall_tolerance": float(recall_tolerance),
-        "worst_recall_gap": float(worst_gap),
+        "worst_mean_recall_gap": float(worst_gap),
         "passed": bool(worst_gap <= recall_tolerance),
-        "cells": cells,
-        "reference_graph_stats": graph.stats(),
+        "cells": aggregated,
+        "per_seed": per_seed,
+        "reference_graph_stats": reference_stats,
         "native_graph_stats": native_stats,
         "native_graph_parse_error": parse_error,
     }

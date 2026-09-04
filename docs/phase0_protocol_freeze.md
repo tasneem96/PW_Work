@@ -12,8 +12,8 @@ python -m braid phase0 gate
 
 ## What is frozen, and where
 
-Everything Phase 0 requires lives in one file, `configs/protocol_v2.json`
-(v1 is superseded; see `protocol_changelog.md`).
+Everything Phase 0 requires lives in one file, `configs/protocol_v3.json`
+(v1 and v2 are superseded; see `protocol_changelog.md`).
 
 | Frozen item | Protocol path |
 | --- | --- |
@@ -25,6 +25,7 @@ Everything Phase 0 requires lives in one file, `configs/protocol_v2.json`
 | M values | `hnsw.M_grid` |
 | efSearch grid | `hnsw.ef_search_grid` |
 | Neighbour-selection rules | `hnsw.neighbor_selection` |
+| Reference-versus-hnswlib parity rule | `hnsw.parity_tolerance` |
 | Seeds | `seeds` |
 | Qcal / Qtest split policy | `splits` |
 | BV, BF, K grids and nesting rule | `budgets` |

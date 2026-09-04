@@ -397,8 +397,19 @@ def phase1_gate(
                 parity_missing.append(tag)
             elif not parity.get("passed"):
                 parity_failures[tag] = {
-                    "worst_recall_gap": parity.get("worst_recall_gap"),
+                    "worst_mean_recall_gap": parity.get("worst_mean_recall_gap"),
                     "tolerance": parity.get("recall_tolerance"),
+                    "build_seeds": parity.get("build_seeds"),
+                    "seed_spread": [
+                        {
+                            "ef_search": cell.get("ef_search"),
+                            "mean_recall_gap": cell.get("mean_recall_gap"),
+                            "seed_spread_reference": cell.get("seed_spread_reference"),
+                            "seed_spread_native": cell.get("seed_spread_native"),
+                        }
+                        for cell in parity.get("cells", [])
+                        if not cell.get("within_tolerance", True)
+                    ],
                 }
             e_clean = cell.get("e_clean", {})
             expected = len(protocol.recall_targets)

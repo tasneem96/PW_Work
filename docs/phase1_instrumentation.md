@@ -128,11 +128,56 @@ overstated the deployed system's resilience. The correction is recorded in
 `protocol_changelog.md` as the reason v1 was superseded, and
 `keep_pruned_connections` is now a declared Phase 8 ablation.
 
-Second, `braid.hnsw.native` builds an hnswlib index over the same corpus,
-compares recall per efSearch cell against a declared tolerance (0.05 absolute),
-and parses hnswlib's serialized index to compare graph statistics. Current
-parity on `syn-clusters-d64` (n = 3000, M = 16): layer-0 mean degree 16.4
-against 16.4, edges 51177 against 51192, worst recall gap 0.014.
+Second, `braid.hnsw.native` builds hnswlib indexes over the same corpus,
+compares seed-averaged recall per efSearch cell against a declared tolerance
+(0.05 absolute), and parses hnswlib's serialized index to compare graph
+statistics. Parity is judged across three build seeds per side, because two
+builds of one corpus with different level-assignment seeds are different
+graphs: on `syn-iso-d128` at M = 8 the seed spread of recall@10 at efSearch 10
+is about 0.05, so a single-seed comparison of that cell reported a 0.055
+"divergence" that was only which graph each side happened to build. That
+failure is what produced protocol v3; the check changed, not the tolerance.
+
+Parity on the `dev` profile run (n = 8000, 128 calibration queries, three build
+seeds, seed-averaged gaps):
+
+| Cell | worst mean gap | seed spread at that efSearch |
+| --- | --- | --- |
+| syn-clusters-d64, M = 8 | 0.006 | 0.016 |
+| syn-clusters-d64, M = 16 | 0.002 | 0.004 |
+| syn-iso-d128, M = 8 | 0.022 | 0.052 |
+| syn-iso-d128, M = 16 | 0.008 | 0.013 |
+
+Every gap sits at or below the seed spread that produced it. Layer-0 mean
+degree matches hnswlib to the first decimal in every cell.
+
+## What the dev run shows about the baseline
+
+Recorded here because later phases compare against these numbers, not because
+they are results about anything.
+
+| Corpus | M | recall@10 at ef 10 / 50 / 200 | \|A\|/N at ef 50 | e_clean(0.9) | e_clean(0.95) |
+| --- | --- | --- | --- | --- | --- |
+| syn-clusters-d64 | 8 | 0.94 / 1.00 / 1.00 | 0.21 | 10 | 50 |
+| syn-clusters-d64 | 16 | 0.98 / 1.00 / 1.00 | 0.29 | 10 | 10 |
+| syn-iso-d128 | 8 | 0.64 / 0.85 / 0.92 | 0.47 | 200 | right-censored |
+| syn-iso-d128 | 16 | 0.96 / 0.98 / 0.99 | 0.70 | 10 | 10 |
+
+Three things in that table matter for the phases ahead.
+
+1. The isotropic corpus at M = 8 never reaches recall 0.95 on the profile's
+   efSearch subset, so e_clean(0.95) is right-censored rather than pinned to
+   200. Any Delta_ef on that cell inherits the censoring, which is why the
+   metric carries the flag rather than a substituted value.
+2. The knowledge fraction ranges from 0.21 to 0.70 across cells at a fixed
+   query count. A gray-box claim that does not report \|A\|/N next to attack
+   strength is unfalsifiable, since the same attack on the third row is
+   sitting on most of the database.
+3. Work counters at fixed efSearch are tight (distance evaluations 679 with
+   standard error 6 at ef 50, iso-d128, M = 8) and heavy-tailed upward
+   (p95 781). That tightness is what makes a work-amplification effect
+   measurable at all; it is also why the counters, not latency, are the
+   primary work signal.
 
 Two hnswlib quirks are recorded rather than worked around: `space="cosine"`
 normalizes stored copies at insert time, which would move the attack surface

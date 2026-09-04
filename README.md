@@ -56,7 +56,7 @@ for a result.
 ## Layout
 
 ```
-configs/protocol_v2.json     the frozen protocol (v1 superseded; see docs/protocol_changelog.md)
+configs/protocol_v3.json     the frozen protocol (v1, v2 superseded; see docs/protocol_changelog.md)
 braid/protocol.py            freeze enforcement, schema validation, run profiles
 braid/splits.py              Qcal/Qtest with the held-out ids sealed at runtime
 braid/audit.py               append-only log of every unseal attempt
@@ -88,9 +88,11 @@ tests/                       99 tests, including gate-failure cases
 2. **The primary HNSW is instrumented code here, not hnswlib.** hnswlib exposes
    no visited set, no expansions, no neighbour lists, and cannot search a clean
    graph over corrupted vectors, which is the whole stale condition. Parity
-   against hnswlib is therefore a gate check (recall within 0.05, layer-0 mean
-   degree 16.4 against 16.4, worst recall gap 0.014 at M = 16). An externally
-   reproducible claim will still have to be reproduced on the deployed index.
+   against hnswlib is therefore a gate check, judged on seed-averaged recall
+   across three build seeds per side: worst gap 0.022 on the `dev` profile,
+   against a seed spread of 0.052 in the same cell, with layer-0 mean degree
+   matching to the first decimal. An externally reproducible claim will still
+   have to be reproduced on the deployed index.
 3. **Latency here is not a latency claim.** Python wall clock catches gross
    regressions and nothing more. The work-amplification claim's timing
    component needs the native implementation on controlled hardware.

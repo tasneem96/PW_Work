@@ -18,17 +18,38 @@ pytestmark = pytest.mark.skipif(native_version() is None, reason="hnswlib not in
 
 
 def test_recall_parity_is_within_the_declared_tolerance(small_dataset, small_params, protocol):
-    tolerance = float(protocol.doc["hnsw"]["parity_tolerance"]["tolerance"])
+    spec = protocol.doc["hnsw"]["parity_tolerance"]
     report = parity_report(
         small_dataset.store,
         small_dataset.queries,
         small_params,
         ef_grid=[10, 50, 200],
         k=10,
-        recall_tolerance=tolerance,
+        recall_tolerance=float(spec["tolerance"]),
+        build_seeds=int(spec["build_seeds"]),
     )
     assert report["available"]
     assert report["passed"], report["cells"]
+
+
+def test_parity_reports_seed_spread_next_to_the_gap(small_dataset, small_params):
+    """A gap must be readable against the noise floor that produced it."""
+    report = parity_report(
+        small_dataset.store,
+        small_dataset.queries,
+        small_params,
+        ef_grid=[10, 50],
+        k=10,
+        build_seeds=3,
+    )
+    assert len(report["build_seeds"]) == 3
+    assert len(report["per_seed"]) == 3
+    for cell in report["cells"]:
+        assert cell["seed_spread_reference"] >= 0.0
+        assert cell["seed_spread_native"] >= 0.0
+        assert cell["reference_recall_range"][0] <= cell["reference_recall_mean"]
+        assert cell["mean_recall_gap"] >= 0.0
+        assert "gap_below_seed_spread" in cell
 
 
 def test_layer0_degree_matches_hnswlib(small_dataset, small_params):

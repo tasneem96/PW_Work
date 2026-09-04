@@ -72,6 +72,8 @@ def test_freeze_writes_a_verifying_hash(protocol, tmp_path):
         (lambda d: d["hnsw"].__setitem__("ef_search_grid", [50, 20, 10]), "sorted ascending"),
         (lambda d: d["hnsw"].__setitem__("top_k", [1, 100]), "recall is capped"),
         (lambda d: d["hnsw"].pop("neighbor_selection"), "neighbor_selection"),
+        (lambda d: d["hnsw"]["parity_tolerance"].__setitem__("build_seeds", 1), "build-seed variance"),
+        (lambda d: d["hnsw"].pop("parity_tolerance"), "parity_tolerance must be declared"),
         (lambda d: d["claims"].pop(0), "required family"),
         (lambda d: d["splits"].__setitem__("test_fraction", 0.9), "must sum to 1"),
         (lambda d: d["targets"]["rules"][0].__setitem__("deterministic", False), "deterministic"),

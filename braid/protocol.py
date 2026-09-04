@@ -30,7 +30,7 @@ from typing import Any, Iterable, Sequence
 
 from .paths import DEFAULT_PROTOCOL
 from .similarity import CONVENTIONS
-from .vectors import NUMERIC_TYPES
+from .vectors import BIT_WIDTH, NUMERIC_TYPES
 
 HASH_FIELD = "protocol_hash"
 STATUS_FROZEN = "frozen"
@@ -304,6 +304,21 @@ class Protocol:
             out.append("hnsw.ef_construction must be positive")
         if max(hnsw.get("top_k", [1])) > min(hnsw.get("ef_search_grid", [1])):
             out.append("every efSearch value must be >= max(top_k); otherwise recall is capped by ef")
+        parity = hnsw.get("parity_tolerance")
+        if not parity:
+            out.append(
+                "hnsw.parity_tolerance must be declared: the reference implementation is only "
+                "credible while it tracks the deployed one"
+            )
+        else:
+            for field in ("tolerance", "build_seeds", "queries", "judgement"):
+                if field not in parity:
+                    out.append(f"hnsw.parity_tolerance must declare {field!r}")
+            if int(parity.get("build_seeds", 0)) < 2:
+                out.append(
+                    "hnsw.parity_tolerance.build_seeds must be >= 2: a single build per side "
+                    "cannot separate an implementation gap from build-seed variance"
+                )
         selection = hnsw.get("neighbor_selection")
         if not selection:
             out.append(
@@ -339,11 +354,18 @@ class Protocol:
             elif min(values) < 1:
                 out.append(f"budgets.{key} values must be >= 1")
         if budgets.get("K_grid") and budgets.get("BV_grid") and budgets.get("BF_grid"):
-            # A bit set must be reachable under the nesting constraints (2)-(4).
-            if max(budgets["K_grid"]) > max(budgets["BV_grid"]) * max(budgets["BF_grid"]) * max(
-                (32,)
-            ):
-                out.append("max(K_grid) exceeds what BV_grid x BF_grid x bit width can hold")
+            # A bit set must be reachable under the nesting constraints (2)-(4):
+            # at most BV vectors, BF features each, and one flip per bit position.
+            widest = max(
+                (BIT_WIDTH[nt] for nt in system["numeric_types"] if nt in BIT_WIDTH),
+                default=32,
+            )
+            capacity = max(budgets["BV_grid"]) * max(budgets["BF_grid"]) * widest
+            if max(budgets["K_grid"]) > capacity:
+                out.append(
+                    f"max(K_grid) = {max(budgets['K_grid'])} exceeds the {capacity} bits that "
+                    f"max(BV_grid) x max(BF_grid) x {widest}-bit features can hold"
+                )
 
         # bit-flip policy
         policy = doc["bitflip_policy"]

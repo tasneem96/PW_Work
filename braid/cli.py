@@ -208,6 +208,9 @@ def _cmd_phase1(args: argparse.Namespace) -> int:
             recall_tolerance=float(
                 protocol.doc["hnsw"].get("parity_tolerance", {}).get("tolerance", 0.05)
             ),
+            build_seeds=int(
+                protocol.doc["hnsw"].get("parity_tolerance", {}).get("build_seeds", 3)
+            ),
         )
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report.get("passed", False) else 1

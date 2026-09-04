@@ -456,15 +456,16 @@ def _sweep_one(
 
         parity = {"available": False, "reason": "not requested"}
         if native_parity:
+            parity_spec = protocol.doc["hnsw"].get("parity_tolerance", {})
+            parity_queries = int(parity_spec.get("queries", 128))
             parity = parity_report(
                 dataset.store,
-                cal_queries[: min(64, cal_queries.shape[0])],
+                cal_queries[: min(parity_queries, cal_queries.shape[0])],
                 params,
                 ef_grid=ef_grid,
                 k=k_max,
-                recall_tolerance=float(
-                    protocol.doc["hnsw"].get("parity_tolerance", {}).get("tolerance", 0.05)
-                ),
+                recall_tolerance=float(parity_spec.get("tolerance", 0.05)),
+                build_seeds=int(parity_spec.get("build_seeds", 3)),
                 reference_graph=graph,
             )
 

@@ -7,10 +7,44 @@ protocol file (`configs/protocol_v2.json`, and so on) and adding an entry here.
 The Phase 0 gate reads this file and fails if the active protocol's id and hash
 prefix are not recorded.
 
-## braid-protocol-v2 (active)
+## braid-protocol-v3 (active)
+
+- File: `configs/protocol_v3.json`
+- Status: frozen
+- Content hash: `a01bc08a1725985aa3d4b35c383ec0f3728f8404f84e092fca38b44c99407ed7`
+- Frozen at: 2026-09-04 (UTC)
+- Supersedes: `braid-protocol-v2`
+
+Why v2 was superseded: it judged reference-versus-hnswlib parity from a single
+build per side. Two builds of the same corpus with different level-assignment
+seeds are different graphs, and at low recall that difference is larger than
+the declared 0.05 tolerance. The `dev` profile run made this concrete: on
+`syn-iso-d128` at M = 8, single-seed parity showed a 0.055 gap and failed the
+Phase 1 gate. Four build seeds on that cell (n = 8000, 64 calibration queries,
+recall@10):
+
+| efSearch | reference range | hnswlib range |
+| --- | --- | --- |
+| 10 | 0.577 to 0.709 | 0.577 to 0.667 |
+| 50 | 0.838 to 0.847 | 0.847 to 0.859 |
+
+The distributions overlap, with no consistent direction across efSearch, so the
+"gap" was which graph each side happened to build. The gate was underpowered,
+so the check changed rather than the tolerance: widening the tolerance to make
+a failing cell pass is exactly the move this protocol exists to prevent.
+
+Changes from v2:
+
+1. `hnsw.parity_tolerance` now declares `build_seeds` (3), `queries` (128), the
+   judgement rule (seed-averaged gap, with per-seed ranges and result overlap
+   reported next to it), and the rationale with the measurement above.
+2. The protocol validator requires `hnsw.parity_tolerance` with at least two
+   build seeds, which is why v2 no longer validates.
+
+## braid-protocol-v2
 
 - File: `configs/protocol_v2.json`
-- Status: frozen
+- Status: superseded by v3
 - Content hash: `d9375abeab7a43c173620127fd76ef8c4c7f0e64739700adce103e04b24a915c`
 - Frozen at: 2026-09-04 (UTC)
 - Supersedes: `braid-protocol-v1`

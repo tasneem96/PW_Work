@@ -1,0 +1,607 @@
+{
+  "bitflip_policy": {
+    "bit_classes": [
+      "sign",
+      "exponent",
+      "mantissa"
+    ],
+    "finite_only": {
+      "max_abs_coordinate_rule": "reject a decoded coordinate whose absolute value exceeds 8x the maximum absolute coordinate of the clean corpus for that dataset",
+      "reject_inf": true,
+      "reject_nan": true,
+      "subnormal_policy": "allowed; decoded subnormals are recorded as such in the bit manifest"
+    },
+    "modes": [
+      "finite_only",
+      "unrestricted_ieee754"
+    ],
+    "reporting": "sign, exponent, and mantissa flips are reported separately for fp32 and fp16",
+    "reversibility": "every mutation records original bits, flipped bits, decoded values, and delta_{i,c,l}, and must be exactly reversible",
+    "unrestricted_ieee754": {
+      "description": "No value filter. Reported as a separate condition because exponent flips can otherwise dominate every result."
+    }
+  },
+  "budgets": {
+    "BF_grid": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "BV_grid": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "K_grid": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      64
+    ],
+    "nesting_rule": "b_{i,c,l} <= f_{i,c} <= v_i, with sum v_i <= BV, sum_c f_{i,c} <= BF v_i, and sum b_{i,c,l} <= K",
+    "vector_pool": "flips are restricted to the locally exposed pool A = union over Qcal of L(q)"
+  },
+  "claims": [
+    {
+      "exit_gate": "ASR_index above random-flip and matched-budget baselines on Qtest, with a reproducible stale-versus-exact and stale-versus-rebuilt gap.",
+      "family": "untargeted_retrieval_failure",
+      "id": "C1-untargeted-retrieval-failure",
+      "phase": 8,
+      "primary_metric": "ASR_index",
+      "statement": "Under a bit budget K, localized gray-box bit flips cause stale HNSW to miss the clean exact nearest neighbour on held-out queries for which exact search still retains it.",
+      "stop_condition": "If exact search degrades as much as stale HNSW, report a vector-corruption result, not graph amplification.",
+      "supporting_metrics": [
+        "Amplification(K)",
+        "Recovery(K)",
+        "recall@k",
+        "knowledge_fraction"
+      ]
+    },
+    {
+      "exit_gate": "Increase in real target visitation above clean, matched-random, and untargeted baselines. A fall in P_hit alone is untargeted disruption, not steering.",
+      "family": "targeted_route_steering",
+      "id": "C2-targeted-route-steering",
+      "phase": 5,
+      "primary_metric": "change_in_real_target_visitation_vs_clean",
+      "statement": "The same bit budget can raise the rate at which the real stale-HNSW trace visits a pre-specified wrong node v_tar(q) fixed before bit selection.",
+      "stop_condition": "If targeted soft-route hits do not move real visitation, the targeted claim is dropped.",
+      "supporting_metrics": [
+        "P_tar",
+        "P_hit_tar",
+        "matched_random_visitation",
+        "untargeted_visitation"
+      ]
+    },
+    {
+      "exit_gate": "Strict ASR_target on pre-registered eligible queries; visitation alone is not sufficient.",
+      "family": "targeted_retrieval",
+      "id": "C3-targeted-retrieval",
+      "phase": 8,
+      "primary_metric": "ASR_target",
+      "statement": "For eligible held-out queries, the attack makes stale HNSW return v_tar(q) while exact search still holds i*(q) and does not hold v_tar(q).",
+      "stop_condition": "If visitation does not convert into final output, report steering without retrieval control.",
+      "supporting_metrics": [
+        "target_inclusion_rate",
+        "route_visitation_rate",
+        "eligible_query_coverage"
+      ]
+    },
+    {
+      "exit_gate": "Increased real work on the exact-retained stratum. A latency claim additionally requires reproducible timing on controlled hardware; a larger J_delay alone is not sufficient.",
+      "family": "work_amplification",
+      "id": "C4-work-amplification",
+      "phase": 8,
+      "primary_metric": "distance_evaluations_and_Delta_ef_at_matched_recall",
+      "statement": "Bit flips increase the real local search work stale HNSW needs, at fixed efSearch and at matched recall, on the stratum of queries whose exact answer is retained.",
+      "stop_condition": "If matched-recall work does not increase, no resource-amplification claim is made.",
+      "supporting_metrics": [
+        "expanded_nodes",
+        "unique_visited_nodes",
+        "latency_distribution",
+        "right_censoring_rate"
+      ]
+    },
+    {
+      "exit_gate": "Reproducible stale-index gap against both exact and rebuilt search across datasets, M, efSearch, and numeric types.",
+      "family": "graph_amplification",
+      "id": "C0-graph-amplification-core",
+      "phase": 8,
+      "primary_metric": "ASR_index",
+      "statement": "Core hypothesis: a stale HNSW graph amplifies sparse stored-vector corruption relative to exact search over the same corrupted vectors and to a graph rebuilt from them.",
+      "stop_condition": "Absent the gap, the project reports a boundary or negative result.",
+      "supporting_metrics": [
+        "Amplification(K)",
+        "Recovery(K)"
+      ]
+    }
+  ],
+  "comparisons": {
+    "baselines": [
+      "random_flips_same_K",
+      "geometry_only",
+      "route_only",
+      "targeted_only",
+      "delay_only",
+      "cost_only",
+      "hybrid",
+      "global_white_box_upper_bound"
+    ],
+    "conditions": [
+      "exact",
+      "hnsw_clean",
+      "hnsw_stale",
+      "hnsw_rebuilt"
+    ],
+    "primary_comparison": "hnsw_stale against both exact and hnsw_rebuilt over the same corrupted vectors, at matched K, M, efSearch and k, on held-out queries that clean HNSW answered correctly",
+    "primary_metric": "ASR_index",
+    "supporting_metrics": [
+      "Amplification(K)",
+      "Recovery(K)",
+      "recall@k",
+      "knowledge_fraction"
+    ],
+    "work_metric_note": "latency is reported separately from the deterministic counters and never substituted for them",
+    "work_metrics": [
+      "expanded_nodes",
+      "unique_visited_nodes",
+      "distance_evaluations",
+      "wall_clock_latency"
+    ]
+  },
+  "datasets": [
+    {
+      "available": true,
+      "dim": 64,
+      "embedding_model": "none_raw_features",
+      "generator": "gaussian_clusters",
+      "id": "syn-clusters-d64",
+      "kind": "synthetic",
+      "n": 20000,
+      "n_queries": 1000,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "params": {
+        "center_scale": 1.0,
+        "n_clusters": 64,
+        "within_sigma": 0.35
+      },
+      "queries": {
+        "generator": "perturbed_corpus",
+        "sigma": 0.12
+      },
+      "role": "primary development corpus: clustered geometry, unit-ish norms"
+    },
+    {
+      "available": true,
+      "dim": 128,
+      "embedding_model": "none_raw_features",
+      "generator": "gaussian_isotropic",
+      "id": "syn-iso-d128",
+      "kind": "synthetic",
+      "n": 20000,
+      "n_queries": 1000,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "params": {
+        "scale": 1.0
+      },
+      "queries": {
+        "generator": "perturbed_corpus",
+        "sigma": 0.15
+      },
+      "role": "hard case: isotropic high-dimensional geometry with weak cluster structure"
+    },
+    {
+      "available": true,
+      "dim": 64,
+      "embedding_model": "none_raw_features",
+      "generator": "gaussian_clusters_skewed_norms",
+      "id": "syn-clusters-skewnorm-d64",
+      "kind": "synthetic",
+      "n": 20000,
+      "n_queries": 1000,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "params": {
+        "log_norm_sigma": 1.0,
+        "n_clusters": 64,
+        "within_sigma": 0.35
+      },
+      "queries": {
+        "generator": "perturbed_corpus",
+        "sigma": 0.12
+      },
+      "role": "norm-spread control: cosine ignores norms, exponent flips do not"
+    },
+    {
+      "available": false,
+      "dim": 128,
+      "embedding_model": "none_raw_features",
+      "id": "sift-1m",
+      "kind": "external",
+      "loader": {
+        "checksums": "sha256 of both files must be recorded in docs/protocol_changelog.md before first use",
+        "corpus_file": "corpus.npy",
+        "query_file": "queries.npy",
+        "root": "data/sift1m"
+      },
+      "n": 1000000,
+      "n_queries": 10000,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "role": "Phase 8 scale and realism"
+    },
+    {
+      "available": false,
+      "dim": 100,
+      "embedding_model": "none_raw_features",
+      "id": "glove-100",
+      "kind": "external",
+      "loader": {
+        "checksums": "sha256 of both files must be recorded in docs/protocol_changelog.md before first use",
+        "corpus_file": "corpus.npy",
+        "query_file": "queries.npy",
+        "root": "data/glove100"
+      },
+      "n": 1183514,
+      "n_queries": 10000,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "role": "Phase 8 embedding-geometry contrast"
+    },
+    {
+      "available": false,
+      "dim": 384,
+      "embedding_model": "all-MiniLM-L6-v2",
+      "id": "msmarco-minilm-384",
+      "kind": "external",
+      "loader": {
+        "checksums": "sha256 of both files must be recorded in docs/protocol_changelog.md before first use",
+        "corpus_file": "corpus.npy",
+        "query_file": "queries.npy",
+        "root": "data/msmarco-minilm"
+      },
+      "n": 1000000,
+      "n_queries": 10000,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "role": "Phase 8 RAG-like retrieval setting; blocked until the model revision is pinned"
+    }
+  ],
+  "embedding_models": [
+    {
+      "description": "Raw feature vectors (synthetic corpora and SIFT descriptors); no embedding model in the loop.",
+      "id": "none_raw_features",
+      "status": "pinned"
+    },
+    {
+      "description": "sentence-transformers/all-MiniLM-L6-v2, 384-d text embeddings.",
+      "id": "all-MiniLM-L6-v2",
+      "pin_note": "The model revision hash must be pinned by a new protocol version before any external-data run. Until then no claim may cite this model.",
+      "pin_required_before_phase": 8,
+      "revision": null,
+      "status": "declared_pending_pin"
+    }
+  ],
+  "frozen_at": "2026-09-04T18:05:20Z",
+  "hnsw": {
+    "M_grid": [
+      8,
+      16,
+      32
+    ],
+    "ef_construction": 200,
+    "ef_search_grid": [
+      10,
+      20,
+      50,
+      100,
+      200,
+      400
+    ],
+    "entry_point_rule": "the highest-level element, as in Algorithm 5; the attacker may not change it",
+    "insertion_order": "identity order of element ids, fixed by the corpus construction",
+    "level_multiplier_rule": "1/ln(M)",
+    "maxM0_rule": "2M",
+    "neighbor_selection": {
+      "ablations": {
+        "keep_pruned_connections": [
+          false,
+          true
+        ],
+        "note": "the paper's Algorithm 4 flag is swept as a declared ablation in Phase 8; a robustness result on the higher-degree variant may not be reported as a result about the deployed index"
+      },
+      "degree_cap_rule": "max_M0 at layer 0 and M above it, applied when shrinking an existing node's list",
+      "descent_rule": "the closest selected neighbour becomes the entry point for the next lower layer",
+      "extend_candidates": false,
+      "keep_pruned_connections": false,
+      "links_selected_per_insertion": "M at every layer, including layer 0"
+    },
+    "parity_tolerance": {
+      "build_seeds": 3,
+      "judgement": "parity fails when the seed-averaged gap exceeds the tolerance at any efSearch; per-seed ranges and the result overlap are reported next to the gap so a gap smaller than the seed spread is visible as such",
+      "metric": "absolute difference between seed-averaged recall@k of the instrumented reference implementation and of hnswlib, at the same M, ef_construction, and efSearch",
+      "queries": 128,
+      "rationale": "on syn-iso-d128 at M=8, four build seeds moved reference recall@10 at efSearch 10 across 0.577-0.709 and hnswlib's across 0.577-0.667; a single-seed comparison of that cell showed a 0.055 gap that seed variance alone explains",
+      "tolerance": 0.05
+    },
+    "top_k": [
+      1,
+      10
+    ]
+  },
+  "leakage_policy": {
+    "enforcement": "braid.splits seals held-out query ids at runtime; every unseal attempt, permitted or refused, is written to results/audit/leakage_audit.jsonl and read by the Phase 0 gate.",
+    "rule": "Bit sets, target rules, eligibility rules, surrogate parameters (gamma, H, tau, lambda, cost weights), efSearch grids, and success thresholds are chosen on Qcal only.",
+    "seal_test_split": true,
+    "selection_phases": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "test_unseal_allowed_phases": [
+      8,
+      9,
+      10
+    ]
+  },
+  "notes": [
+    "This file is the Phase 0 freeze. Every value here must be fixed before any attack bit is",
+    "selected. Editing a frozen file breaks its content hash on load; changes require a new",
+    "versioned protocol file plus an entry in docs/protocol_changelog.md.",
+    "v2 supersedes v1 because v1 mis-stated hnswlib's neighbour-selection behaviour: hnswlib's",
+    "getNeighborsByHeuristic2 does not keep pruned connections, so declaring keepPrunedConnections=true",
+    "as an hnswlib default was wrong and produced a reference graph with roughly 1.6x hnswlib's",
+    "layer-0 degree. v2 declares the flags explicitly and adds them as a swept ablation.",
+    "v3 supersedes v2 because v2 judged reference-versus-hnswlib parity from a single build per",
+    "side. Build-seed variance at low recall is larger than the declared tolerance, so parity is",
+    "now judged on seed-averaged recall with the per-seed spread reported alongside."
+  ],
+  "profiles": {
+    "dev": {
+      "M_grid": [
+        8,
+        16
+      ],
+      "build_repeats": 2,
+      "claim_bearing": false,
+      "datasets": [
+        "syn-clusters-d64",
+        "syn-iso-d128"
+      ],
+      "description": "Development subset: both synthetic geometries, two M values, three efSearch values, 200 calibration queries.",
+      "ef_search_grid": [
+        10,
+        50,
+        200
+      ],
+      "max_n": 8000,
+      "max_queries": 200,
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "top_k": [
+        1,
+        10
+      ]
+    },
+    "full": {
+      "M_grid": [
+        8,
+        16,
+        32
+      ],
+      "build_repeats": 3,
+      "claim_bearing": true,
+      "datasets": [
+        "syn-clusters-d64",
+        "syn-iso-d128",
+        "syn-clusters-skewnorm-d64",
+        "sift-1m",
+        "glove-100",
+        "msmarco-minilm-384"
+      ],
+      "description": "The frozen grid in full. The only profile whose results may support a claim.",
+      "ef_search_grid": [
+        10,
+        20,
+        50,
+        100,
+        200,
+        400
+      ],
+      "numeric_types": [
+        "fp32",
+        "fp16"
+      ],
+      "top_k": [
+        1,
+        10
+      ]
+    },
+    "smoke": {
+      "M_grid": [
+        16
+      ],
+      "build_repeats": 2,
+      "claim_bearing": false,
+      "datasets": [
+        "syn-clusters-d64"
+      ],
+      "description": "Pipeline check, minutes not hours. Exercises every Phase 1 instrument on one small corpus.",
+      "ef_search_grid": [
+        10,
+        50,
+        200
+      ],
+      "max_n": 3000,
+      "max_queries": 120,
+      "numeric_types": [
+        "fp32"
+      ],
+      "top_k": [
+        1,
+        10
+      ]
+    }
+  },
+  "protocol_hash": "a01bc08a1725985aa3d4b35c383ec0f3728f8404f84e092fca38b44c99407ed7",
+  "protocol_id": "braid-protocol-v3",
+  "recall_targets": [
+    0.9,
+    0.95
+  ],
+  "schema_version": 1,
+  "seeds": {
+    "build_repeats": 3,
+    "note": "All randomness is label-addressed, so no run depends on stored state beyond this root seed.",
+    "root": 20260904,
+    "streams": {
+      "build": "root + label 'build/<dataset_id>/<numeric_type>/M=<M>'",
+      "corpus": "root + label 'corpus/<dataset_id>'",
+      "queries": "root + label 'queries/<dataset_id>'",
+      "split": "root + label 'split/<dataset_id>'"
+    }
+  },
+  "splits": {
+    "cal_fraction": 0.5,
+    "policy": "uniform random permutation of query ids under the 'split/<dataset_id>' stream; the first half is Qcal, the rest is Qtest",
+    "test_fraction": 0.5,
+    "test_split_use": "held-out evaluation only, in phases listed under leakage_policy.test_unseal_allowed_phases"
+  },
+  "status": "frozen",
+  "supersedes": "braid-protocol-v2",
+  "surrogate": {
+    "H_grid": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "H_is_ef_search": false,
+    "H_note": "H counts surrogate transitions and is swept independently of efSearch, which controls real candidate-search breadth.",
+    "calibration_only": true,
+    "cost_proxies": [
+      "unit",
+      "local_degree",
+      "instrumented_clean_expansion_cost"
+    ],
+    "epsilon": 1e-12,
+    "gamma_grid": [
+      1.0,
+      2.0,
+      5.0,
+      10.0,
+      20.0,
+      50.0
+    ],
+    "tau_grid": [
+      0.01,
+      0.05,
+      0.1
+    ],
+    "validation_gate": "Phase 4: the surrogate must predict real stale-HNSW next-node choices better than random ranking on a calibration-only validation split, or route objectives are reported as search heuristics only."
+  },
+  "system": {
+    "arithmetic_dtype": "fp32",
+    "distance": {
+      "convention": "cosine",
+      "hnsw_distance": "d(q,e) = 1 - cosine(q,e)",
+      "similarity": "s(q,e) = <q,e> / (||q|| ||e||)",
+      "storage": "raw_unnormalized",
+      "storage_note": "Bit flips target raw stored coordinates. A deployment that stores pre-normalized vectors is a separate condition and must be reported separately."
+    },
+    "hnsw_implementation": {
+      "cross_check": {
+        "known_divergences": [
+          "space='cosine' normalizes stored copies at insert time, which moves the attack surface off raw stored coordinates; parity runs therefore pre-normalize and use space='ip'",
+          "BFIndex(space='cosine') does not normalize at all in 0.8.0",
+          "no API exposes visited sets, candidate expansions, or neighbour lists, which is why the primary implementation is the instrumented one",
+          "hnswlib does not implement the paper's keepPrunedConnections = true; retaining pruned connections raises mean layer-0 degree from about M to about 1.6M and inflates recall at small efSearch, so it is declared as an ablation rather than a default."
+        ],
+        "name": "hnswlib",
+        "role": "recall-parity and graph-statistics cross-check; the deployed implementation any external claim must be reproduced on",
+        "version": "0.8.0"
+      },
+      "primary": {
+        "algorithm_source": "Malkov & Yashunin 2020, Algorithms 1-5, following hnswlib 0.8.0's concrete rules: max_M0 = 2M, at most M links selected for a newly inserted element at every layer, the larger cap applied only when shrinking an existing node's list, descent to the next layer from the closest selected neighbour, extendCandidates = false, and no retention of pruned connections.",
+        "name": "braid.hnsw.reference",
+        "role": "instrumented reference implementation used for all objective optimization and trace extraction",
+        "version": "0.1.0"
+      }
+    },
+    "numeric_types": [
+      "fp32",
+      "fp16"
+    ]
+  },
+  "targets": {
+    "eligibility": {
+      "note": "Reachability is checked before optimization and its coverage reported; it is never applied as a post hoc query filter.",
+      "report_clean_target_rank": true,
+      "report_clean_target_return_rate": true,
+      "report_clean_target_visitation": true,
+      "report_eligible_query_coverage": true,
+      "require_local_reachability_within_H": true,
+      "require_target_not_returned_by_clean_hnsw": true
+    },
+    "lambda_grid": [
+      0.0,
+      0.5,
+      1.0
+    ],
+    "lambda_note": "lambda = 0 is the pure targeted-likelihood objective; any lambda > 0 run must be pre-registered here before use.",
+    "rules": [
+      {
+        "description": "One node for all queries: the element of A with the highest visit count across the Qcal local traces, ties broken by smallest element id. Fixed across Qcal and Qtest.",
+        "deterministic": true,
+        "frozen_before_selection": true,
+        "id": "universal_fixed",
+        "information_used": "calibration-trace visit counts only, which the gray-box model already exposes",
+        "scope": "universal"
+      },
+      {
+        "description": "Per query: among elements of A that are reachable from u0(q) within H steps under the clean local topology and are not i*(q), the one with the largest clean distance rank, ties broken by smallest element id.",
+        "deterministic": true,
+        "frozen_before_selection": true,
+        "id": "local_reachable",
+        "information_used": "clean local trace, local neighbour lists, and clean local distances",
+        "scope": "per_query"
+      },
+      {
+        "description": "Per query: the element of L(q) other than i*(q) with the largest exposed local degree, ties broken by smallest element id. Calibration diagnostic only.",
+        "deterministic": true,
+        "frozen_before_selection": true,
+        "id": "highest_local_degree",
+        "information_used": "exposed local neighbour lists",
+        "scope": "calibration_diagnostic"
+      }
+    ]
+  },
+  "title": "Localized gray-box bit-flip stress testing of HNSW vector search"
+}

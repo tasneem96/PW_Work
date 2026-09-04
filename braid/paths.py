@@ -18,7 +18,7 @@ SWEEP_DIR = RESULTS_DIR / "sweep"
 GATE_DIR = RESULTS_DIR / "gates"
 TRACE_DIR = RESULTS_DIR / "traces"
 
-DEFAULT_PROTOCOL = CONFIG_DIR / "protocol_v2.json"
+DEFAULT_PROTOCOL = CONFIG_DIR / "protocol_v3.json"
 LEAKAGE_AUDIT_LOG = AUDIT_DIR / "leakage_audit.jsonl"
 
 
