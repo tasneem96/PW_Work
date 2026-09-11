@@ -1,4 +1,4 @@
-# Complete Top-$k$ Replacement
+# Complete Top-$k$ Replacement under Stored-Code Bit Flips
 
 ## The objective
 
@@ -32,20 +32,62 @@ gives $r(\delta) = \max\{j : J_{(j)}>0\}$ outsiders entering the top-$k$, so $\m
 
 Check, $k=3$, attacked originals $(10,5,1)$ and outsiders $(7,6,0)$: rungs are $6,\,1,\,-10$, so $r=2$ and $\mathrm{Recall}@3 = 1/3$. The merged top-3 is $\{10,7,6\}$.
 
-## When this objective is unnecessary
+## What this means for the attack: you compute it, you do not optimize it
 
-If $\delta$ flips bits in the **stored codes**, then $s(q,\tilde x_u)$ depends only on the flips assigned to $u$. The problem is separable across items, coupled only through the global budget $B$, and complete replacement is exactly decidable without any max-min optimization.
+Because $\delta$ flips bits **only in the stored codes**, $s(q,\tilde x_u)$ depends
+only on the flips spent on item $u$. Item $v$'s score does not move when you flip
+bits in item $u$. The items are independent and the only thing linking them is the
+global budget $B$. That makes complete replacement exactly decidable.
 
-Define per-item costs, $c^-_u(\theta)$ = flips needed to push original $u$ below $\theta$, and $c^+_v(\theta)$ = flips needed to lift outsider $v$ above $\theta$. Both are closed-form (sorted prefix sums of per-bit score deltas for binary or scalar quantization; codebook enumeration per subquantizer for PQ). With $P_k(\theta)$ the $k$ cheapest outsiders to lift:
+For each item, the best score reachable with $m$ flips is closed form. With binary
+codes $x\in\{-1,+1\}^d$ and inner-product scoring, flipping dimension $j$ changes the
+score by $-2q_jx_j$, so the useful flips are the $m$ largest $2|q_j|$ of the right
+sign and the reachable-score curve is a sorted prefix sum. (Scalar quantization is
+the same, with per-bit deltas $q_j\cdot\text{scale}\cdot 2^b$. Product quantization
+loses additivity within a subquantizer but stays separable across items: enumerate
+the $256$ centroids per subquantizer, then a small knapsack over the $M$ of them.)
 
-$$B^\star = \min_\theta\Bigl[\sum_{u\in T_k^0} c^-_u(\theta) + \sum_{v\in P_k(\theta)} c^+_v(\theta)\Bigr]$$
+From those curves read off, for any threshold $\theta$:
 
-Complete replacement is feasible iff $B^\star \le B$, and the minimizing $\theta$ gives the flip assignment. Both curves are piecewise constant with opposite monotonicity, so this is exact by enumerating breakpoints.
+- $c^-_u(\theta)$, the fewest flips to push original $u$ strictly below $\theta$,
+- $c^+_v(\theta)$, the fewest flips to push outsider $v$ strictly above $\theta$.
 
-If instead $\delta$ perturbs the **query**, one perturbation moves every score, separability is gone, and $J^{@k}_{\mathrm{geo,full}}$ is the right object. Optimize a hinge over the $k\times k$ pairs against a frozen promoter set rather than the raw order statistic, whose gradient touches only one vector at a time.
+Complete replacement at threshold $\theta$ costs $\sum_{u\in T_k^0}c^-_u(\theta)$ plus
+the $k$ smallest $c^+_v(\theta)$, so the minimum budget is
+
+$$\boxed{\;B^\star = \min_\theta\Bigl[\sum_{u\in T_k^0} c^-_u(\theta) + \sum_{v\in P_k(\theta)} c^+_v(\theta)\Bigr]\;}$$
+
+with $P_k(\theta)$ the $k$ cheapest outsiders to lift. Both cost curves are
+piecewise constant in $\theta$ with opposite monotonicity, so the minimization is
+exact by probing one $\theta$ inside each interval between achievable scores.
+The minimizing $\theta$ hands back the flip assignment directly.
+
+The attack is therefore feasible iff $B^\star \le B$, and $B^\star$ is the true
+minimum rather than whatever an optimizer happened to reach.
+
+`topk_replacement.py` implements this and checks it against exhaustive search over
+all flip sets on small instances. The two agree. On a $400\times 64$ binary corpus
+with $k=3$, $B^\star = 4$ flips, and the optimal plan spends all four on demoting
+the three originals without promoting anything: the outsiders rise on their own
+once the incumbents drop. A max-min formulation would have hidden that structure.
+
+## Scale note
+
+$O_k$ is the whole corpus, so do not build cost curves for every item. The gain
+from $B$ flips is bounded by the sum of the $B$ largest $|q_j|$, which is the same
+bound for all items, so any outsider whose clean score falls more than that below
+$\theta$ can never be lifted and is discarded before any per-item work.
 
 ## Scope
 
-All of the above describes exhaustive search. Under HNSW or IVF, flips also change traversal and centroid assignment, so $J>0$ is neither necessary nor sufficient for the returned set. Treat it as an oracle bound and measure the index separately.
+All of the above assumes exhaustive search. Under HNSW or IVF, flipped codes also
+change graph traversal and centroid assignment, so the returned set is not the
+score-ordered top-$k$ and $B^\star$ becomes a lower bound rather than an exact
+answer. Report it as an exact result for flat search and measure the ANN index
+separately.
 
-Untargeted replacement is the cheapest complete replacement, since $P_k(\theta)$ is free to pick the cheapest promoters. Fixing $P$ to an adversary-chosen set has the same constraint structure at weakly higher cost, so $B^\star$ is best reported as a lower bound on any complete-replacement attack.
+Untargeted replacement is the cheapest complete replacement, since $P_k(\theta)$ is
+free to pick whichever outsiders are cheapest. Fixing that set to an
+adversary-chosen one has identical structure at weakly higher cost, so $B^\star$ is
+a lower bound on the cost of any complete-replacement attack, targeted included.
+That is its strongest use.
