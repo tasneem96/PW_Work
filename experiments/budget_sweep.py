@@ -11,6 +11,7 @@ import numpy as np
 from ann.codec import UInt8Codec
 from ann.hnsw import InstrumentedHNSW, exact_topk
 from ann.attacks import tail_demotion, random_flips
+from ann import config as cfg
 
 
 def recall(a, e):
@@ -19,16 +20,18 @@ def recall(a, e):
 
 def main():
     rng = np.random.default_rng(0)
-    N, D, NQ, K, B_F = 3000, 32, 12, 10, 4
+    N, D, NQ, K, B_F = 3000, 32, 12, cfg.K, 4
     X = rng.normal(size=(N, D))
     Q = rng.normal(size=(NQ, D))
     codec = UInt8Codec(X)
     C = codec.encode(X)
     Xq = codec.decode(C)
-    index = InstrumentedHNSW(M=8, ef_construction=64, seed=1).build(Xq)
+    index = InstrumentedHNSW(M=cfg.M, ef_construction=cfg.EF_CONSTRUCTION,
+                             seed=1).build(Xq)
 
     print(f"corpus {N}x{D}, k={K}, {B_F} flips/vector max, {NQ} queries")
-    for ef in (64, 256):
+    print(f"build M={cfg.M} efConstruction={cfg.EF_CONSTRUCTION}, query ef={cfg.EF_SEARCH}")
+    for ef in (cfg.EF_SEARCH,):
         print(f"\n--- ef={ef} ---")
         print(f"{'B':>6} {'vecs':>6} {'demote':>9} {'random':>9} "
               f"{'exact ok':>9} {'ann ok':>7} {'rec0':>6} {'recA':>6}")
