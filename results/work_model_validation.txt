@@ -1,0 +1,11 @@
+building N=8000 M=16 efC=500 ...
+
+(1) level: pred vs real n_dist over 30 queries
+    pearson -0.188  spearman -0.176
+/home/user/PW_Work/experiments/validate_work_model.py:66: ConstantInputWarning: An input array is constant; the correlation coefficient is not defined.
+  dp = spearmanr(dpred, dreal).statistic
+
+(2) sensitivity: predicted dW vs real d(n_dist), 96 single flips
+    spearman nan   (0 of 96 flips changed real work)
+
+[exited with code 0]

@@ -66,3 +66,40 @@ Exact search only (ANN traversal also changes with codes). r_v beyond one hop
 is approximate. deg(v) at layer 0 is near-constant (~2M), so the degree weight
 mostly cancels and Amp is driven by the COUNT of newly admitted-and-reachable
 nodes, which is the number to report.
+
+## Validation (negative): this is a qualitative lens, not a predictor
+
+Checked against the real searcher (validate_work_model.py, 8000x32):
+
+- Level: predicted work vs real n_dist across 30 queries, Pearson -0.19
+  (i.e. no signal). Cause: with theta = the final ef-th score, a_v is ~1 on the
+  top-ef and ~0 below, so W_pred ~ ef*deg is nearly constant. Real work varies
+  because the search admits and then DISPLACES many nodes before stopping, so
+  total expansions exceed ef and are query-dependent. A one-shot final-threshold
+  count cannot capture the sequential admission/displacement churn.
+- Sensitivity: 0 of 96 random single flips changed real work, so the test was
+  degenerate. This is the delay ceiling, not a model success: random low-order
+  flips cross no threshold. Targeted flips DO move work (see
+  path_selection.txt: 2.6-4.9%), and exact single-flip Delta-work ranks them.
+
+Conclusion: the model correctly explains the SIGNS of every measured effect
+(saturation, lure competition, weak path nodes, global failure) but is not a
+validated quantitative predictor and must not be used as a differentiable work
+screen. Ranking flips for delay requires exact Delta-work on the real searcher;
+a quantitative model would have to simulate the candidate queue (total
+admissions over the search), at which point it is essentially the search itself.
+
+## Path-pool selection, measured (path_selection.txt)
+
+Per-query, pool = pop order minus exact top-k, one demotion bit per vector:
+
+| f  | naive(pop) | coverage | exact-greedy | lure(unvisited) |
+|----|-----------|----------|--------------|-----------------|
+| 10 | 2.6%      | 2.6%     | 4.9%         | 3.2%            |
+| 20 | 3.4%      | 3.4%     | 4.9%         | 4.9%            |
+| 40 | 4.7%      | 4.7%     | 4.9%         | 7.4%            |
+
+Exact-marginal ordering beats pop-order at tight budgets (4.9 vs 2.6 at f=10)
+and converges by f=40. The cheap coverage proxy gives NO gain over pop-order.
+Pool choice (unvisited lures) beats path-pool ordering at larger f. All
+single-digit; exact top-k preserved, recall ~0.950.
