@@ -61,3 +61,33 @@ in the model whose threat is real. geo / target does not have this asymmetry.
 - Budget is bits, not vectors: one target's f flips can spread over f distinct
   vectors. If a per-vector cap (B_V) is claimed, the baseline script must
   enforce the same cap as the main method or the comparison is confounded.
+
+## Per-query transient at realistic small budgets (f = 1..32)
+
+The framework's own model, untargeted, fine budget sweep. Mean distance-eval
+inflation across queries:
+
+| f  | lure | tail | random |
+|----|------|------|--------|
+| 1  | 0.4% | 0.1% | 0.0%   |
+| 3  | 0.0% | 0.1% | 0.2%   |
+| 5  | 0.6% | 0.2% | 0.1%   |
+| 16 | 0.4% | 0.8% | 0.4%   |
+| 32 | 0.6% | 1.4% | 0.4%   |
+
+Noise, and non-monotonic (f=2 gives 0.5%, f=3 gives 0.0%). Indistinguishable
+from random flips. Exact top-k 100%, recall flat at 0.953 throughout.
+
+The 25% figure appears only at f=800 bits on a single query, a per-query budget
+no bit-flip threat model supports. Between 1 and 32 bits there is no attack.
+
+## Bottom line
+
+Across every realistic configuration measured, delay is negligible: global
+small budget ~0.4% (saturated), per-query small budget noise, shared budget
+~0.4%. Only f=800 bits/query produces a headline number. HNSW search work is
+governed by graph connectivity and the stopping rule, and a realistic number of
+stored-code flips cannot move either while preserving recall. Report delay as a
+bounded negative result; geo/target is the contribution. Remaining check:
+confirm the small-budget curve on real GloVe-100 so the negative is stated on
+the headline dataset, not this toy.
